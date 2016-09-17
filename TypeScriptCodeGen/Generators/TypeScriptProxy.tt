@@ -1,0 +1,75 @@
+﻿<#@ template language="C#" #>
+<#@ assembly name="System.Core" #>
+<#@ import namespace="System.Linq" #>
+<#@ import namespace="System.Text" #>
+<#@ import namespace="System.Collections.Generic" #>
+<#@ import namespace="TSCodeGen.Analyzers" #>
+declare var $;
+
+module ClientProxy {
+
+<# if (Classes.Count > 0) { #>
+	// Classes
+<#   foreach(var Class in Classes) { #>
+	export class <#= Class.Name #> <# if (!String.IsNullOrEmpty(Class.BaseTypeName)) { #> extends <#=  Class.BaseTypeName #> <# } #> {
+<#   foreach(var prop in Class.Properties) { #>
+		<#= prop.Name #>: <#= GetTypeName(prop.Type) #>;
+<# } #>
+	}
+
+<# } } #>
+<# if (Services.Count > 0) { #>
+	// Controllers
+<# foreach(var service in Services) 
+	if (service.Methods.Count > 0)
+	{ #>
+	export class <#= service.Name #>Proxy {
+		baseUrl: String;
+
+		constructor(serviceBaseUrl: string) {
+			this.baseUrl = serviceBaseUrl;
+		}
+
+<# var getMethods = service.Methods.Where(q => q.isGet).ToList();
+   if (getMethods.Count > 0) { #>
+		// Get Controller Methods
+<# foreach(var method in getMethods) { #>
+		<#= GetUniqueMethodName(service, method) #><#= ParamsString(method) #> {
+			var methodUrl = this.baseUrl + <#= MethodUrl(method) #>;
+			$.getJSON(methodUrl, res => { callback(<# if (method.Returns != null) { #>res<# } #>); } );
+		}
+<#} #>
+
+<# } #>
+<# var methods = new List<Tuple<string, List<MethodData>>> {
+						new Tuple<string, List<MethodData>>("POST", service.Methods.Where(q => q.isPost).ToList()), 
+						new Tuple<string, List<MethodData>>("PUT", service.Methods.Where(q => q.isPut).ToList()), 
+						new Tuple<string, List<MethodData>>("DELETE", service.Methods.Where(q => q.isDelete).ToList()) 
+					};
+   foreach(var data in methods) 
+   {
+	   if (data.Item2.Count == 0) 
+		   continue;
+#>
+		// <#= data.Item1 #> Controller Methods
+<# foreach(var method in data.Item2) { #>
+		<#= GetUniqueMethodName(service, method) #><#= ParamsString(method) #> {
+			var methodUrl = this.baseUrl + <#= MethodUrl(method) #>;
+			$.ajax({type: "<#= data.Item1 #>", 
+			        url: methodUrl,
+<# if (!string.IsNullOrEmpty(BodyParam(method))) { #>
+			        contentType: "application/json; charset=utf-8", 
+			        dataType: "json",
+			        data: JSON.stringify(<#= BodyParam(method) #>), 
+<# } #>
+			        success: res => { callback(<# if (method.Returns != null) { #> res <# } #>); }
+			       });
+		}
+<#} #>
+
+<# } #>
+
+	}
+
+<# } } #>
+}
